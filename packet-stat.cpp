@@ -18,6 +18,7 @@ struct IP {
     int receive_bytes;
 };
 
+
 struct IP ip_packet[MAX_IPS];
 int ip_count = 0;
 
@@ -76,6 +77,11 @@ void print_transport(int tcp_sport, int tcp_dport, int udp_sport, int udp_dport)
     printf("================================\n");
 }
 
+void print_conversation(char* source_ip, uint16_t source_port, char* dest_ip, uint16_t dest_port) {
+    printf("Conversation: %s:%d <-> %s:%d\n",
+       source_ip, ntohs(source_port),
+        dest_ip, ntohs(dest_port));
+}
 void packet_handler(unsigned char *user, const struct pcap_pkthdr *pkthdr, const unsigned char *packet) {
     struct ether_header *ether_header = (struct ether_header *)packet;
     struct ip *ip_header = (struct ip *)(packet + sizeof(struct ether_header));
@@ -97,6 +103,7 @@ void packet_handler(unsigned char *user, const struct pcap_pkthdr *pkthdr, const
 
         print_transport(ntohs(tcp_header->th_sport), ntohs(tcp_header->th_dport), ntohs(udp_header->uh_sport),  ntohs(udp_header->uh_dport));
 
+        print_conversation(source_ip_str, ntohs(tcp_header->th_sport), dest_ip_str, ntohs(tcp_header->th_dport));
         update_stats(source_ip, pkthdr->len, 0);
         update_stats(dest_ip, 0, pkthdr->len);
     }
