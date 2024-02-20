@@ -20,6 +20,10 @@ struct IP {
     int port;
 };
 
+struct Mac {
+    uint8_t source_mac[6];
+    uint8_t dest_mac[6];
+};
 struct Conversation {
     char source_ip[INET_ADDRSTRLEN];
     uint16_t source_port;
@@ -32,6 +36,11 @@ int ip_count = 0;
 
 struct Conversation conversation_list[MAX_CONVERSATIONS];
 int conversation_count = 0;
+
+struct Mac mac_list[MAX_IPS];
+int mac_count = 0;
+
+
 void update_stats(uint32_t ip, uint16_t port, int send_bytes, int receive_bytes) {
     for (int i = 0; i < ip_count; i++) {
         if (ip_packet[i].ip == ip && ip_packet[i].port == port) {
@@ -53,37 +62,32 @@ void update_stats(uint32_t ip, uint16_t port, int send_bytes, int receive_bytes)
 }
 
 
-void print_mac(const uint8_t* source_mac, const uint8_t* dest_mac) {
-    printf("Ethernet Soruce MAC:");
-    for(int i = 0; i < 6; i++){
-        if(i == 5){
-            printf("%02x\n", source_mac[i]);
-            break;
+int is_duplicate_mac(const uint8_t* source_mac, const uint8_t* dest_mac) {
+    for (int i = 0; i < mac_count; i++) {
+        if (memcmp(mac_list[i].source_mac, source_mac, 6) == 0 &&
+            memcmp(mac_list[i].dest_mac, dest_mac, 6) == 0) {
+            return 1;  // MAC addresses already exist
         }
-        printf("%02x:", source_mac[i]);
     }
-    printf("Ethernet Destination MAC: ");
-    for(int i = 0; i < 6; i++){
-         if(i == 5){
-            printf("%02x\n", source_mac[i]);
-            break;
-        }
-        printf("%02x:", dest_mac[i]);
-    }
+    return 0;  // MAC addresses not found
 }
 
+void add_mac(const uint8_t* source_mac, const uint8_t* dest_mac) {
+    memcpy(mac_list[mac_count].source_mac, source_mac, 6);
+    memcpy(mac_list[mac_count].dest_mac, dest_mac, 6);
+    mac_count++;
+}
+
+void print_mac(const uint8_t* source_mac, const uint8_t* dest_mac) {
+    if (!is_duplicate_mac(source_mac, dest_mac)) {
+    
+        add_mac(source_mac, dest_mac);
+    }
+}
 void print_ip(char* source_ip_str, char* dest_ip_str, int packet_len) {
     printf("Source IP: %s\n", source_ip_str);
     printf("Destination IP: %s\n", dest_ip_str);
     printf("IP Packet Length: %d\n", packet_len);
-    printf("================================\n");
-}
-
-void print_transport(int tcp_sport, int tcp_dport, int udp_sport, int udp_dport){
-    printf("TCP Source Port %d \n",tcp_sport);
-    printf("TCP Destination Port %d \n",tcp_dport);
-    printf("UDP Source Port %d \n",udp_sport);
-    printf("UDP Destination Port %d \n",udp_dport);
     printf("================================\n");
 }
 
@@ -111,7 +115,7 @@ void add_conversation(const char* source_ip, uint16_t source_port, const char* d
 void print_conversation(char* source_ip, uint16_t source_port, char* dest_ip, uint16_t dest_port) {
     if (!is_duplicate_conversation(source_ip, source_port, dest_ip, dest_port)) {
         printf("Conversation: %s:%d <-> %s:%d\n", source_ip, source_port, dest_ip, dest_port);
-        printf("==========================================================\n");
+        printf("=======================================\n");
         add_conversation(source_ip, source_port, dest_ip, dest_port);
     }
 }
@@ -136,6 +140,7 @@ void packet_handler(u_char *, const struct pcap_pkthdr *pkthdr, const unsigned c
         update_stats(source_ip, ntohs(tcp_header->th_sport), pkthdr->len, 0);
         update_stats(dest_ip, ntohs(tcp_header->th_dport), 0, pkthdr->len);
 
+
     }
 }
 
@@ -159,12 +164,31 @@ int main(int argc, char *argv[]) {
         char source_ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &(ip_packet[i].ip), source_ip, INET_ADDRSTRLEN);
 
-        printf("IP: %s:%d \n", source_ip, ip_packet[i].port);
+        printf("IP Address %s Port %d \n", source_ip, ip_packet[i].port);
         printf("송신 패킷 개수: %d\n", ip_packet[i].send_packets);
         printf("수신 패킷 개수: %d\n", ip_packet[i].receive_packets);
         printf("송신 패킷 바이트: %d\n", ip_packet[i].send_bytes);
         printf("수신 패킷 바이트: %d\n", ip_packet[i].receive_bytes);
         printf("=======================================\n");
+    }
+
+    for(int j = 0; j< mac_count; j++){
+         printf("Ethernet Source MAC:");
+        for (int i = 0; i < 6; i++) {
+            if (i == 5) {
+                printf("%02x\n", mac_list[j].source_mac[i]);
+                break;
+            }
+            printf("%02x:", mac_list[j].source_mac[i]);
+        }
+        printf("Ethernet Destination MAC: ");
+        for (int i = 0; i < 6; i++) {
+            if (i == 5) {
+                printf("%02x\n", mac_list[j].dest_mac[i]);
+                break;
+            }
+            printf("%02x:", mac_list[j].dest_mac[i]);
+        }
     }
 
     pcap_close(handle);
