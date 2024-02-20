@@ -82,7 +82,7 @@ void print_conversation(char* source_ip, uint16_t source_port, char* dest_ip, ui
        source_ip, ntohs(source_port),
         dest_ip, ntohs(dest_port));
 }
-void packet_handler(unsigned char *user, const struct pcap_pkthdr *pkthdr, const unsigned char *packet) {
+void packet_handler(u_char *, const struct pcap_pkthdr *pkthdr, const unsigned char *packet) {
     struct ether_header *ether_header = (struct ether_header *)packet;
     struct ip *ip_header = (struct ip *)(packet + sizeof(struct ether_header));
     struct tcphdr *tcp_header = (struct tcphdr *)(packet + sizeof(struct ether_header) + sizeof(struct ip));
