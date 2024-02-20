@@ -8,7 +8,8 @@
 #include <netinet/udp.h> 
 #include <string.h>
 
-#define MAX_IPS 1000
+#define MAX_IPS 100
+#define MAX_CONVERSATIONS 10
 
 struct IP {
     uint32_t ip;
@@ -16,32 +17,41 @@ struct IP {
     int receive_packets;
     int send_bytes;
     int receive_bytes;
+    int port;
 };
 
+struct Conversation {
+    char source_ip[INET_ADDRSTRLEN];
+    uint16_t source_port;
+    char dest_ip[INET_ADDRSTRLEN];
+    uint16_t dest_port;
+};
 
 struct IP ip_packet[MAX_IPS];
 int ip_count = 0;
 
-void update_stats(uint32_t ip, int send_bytes, int receive_bytes) {
+struct Conversation conversation_list[MAX_CONVERSATIONS];
+int conversation_count = 0;
+void update_stats(uint32_t ip, uint16_t port, int send_bytes, int receive_bytes) {
     for (int i = 0; i < ip_count; i++) {
-        if (ip_packet[i].ip == ip) {
-            // Update existing entry
-            ip_packet[i].send_packets++;
-            ip_packet[i].receive_packets++;
+        if (ip_packet[i].ip == ip && ip_packet[i].port == port) {
+            ip_packet[i].send_packets += (send_bytes > 0) ? 1 : 0;
+            ip_packet[i].receive_packets += (receive_bytes > 0) ? 1 : 0;
             ip_packet[i].send_bytes += send_bytes;
             ip_packet[i].receive_bytes += receive_bytes;
             return;
         }
     }
 
-    // 초기 설정 
     ip_packet[ip_count].ip = ip;
-    ip_packet[ip_count].send_packets = 1;
-    ip_packet[ip_count].receive_packets = 1;
+    ip_packet[ip_count].port = port;
+    ip_packet[ip_count].send_packets += (send_bytes > 0) ? 1 : 0;
+    ip_packet[ip_count].receive_packets += (receive_bytes > 0) ? 1 : 0;
     ip_packet[ip_count].send_bytes = send_bytes;
     ip_packet[ip_count].receive_bytes = receive_bytes;
     ip_count++;
 }
+
 
 void print_mac(const uint8_t* source_mac, const uint8_t* dest_mac) {
     printf("Ethernet Soruce MAC:");
@@ -77,10 +87,33 @@ void print_transport(int tcp_sport, int tcp_dport, int udp_sport, int udp_dport)
     printf("================================\n");
 }
 
+
+int is_duplicate_conversation(const char* source_ip, uint16_t source_port, const char* dest_ip, uint16_t dest_port) {
+    for (int i = 0; i < conversation_count; i++) {
+        if (strcmp(conversation_list[i].source_ip, source_ip) == 0 &&
+            conversation_list[i].source_port == source_port &&
+            strcmp(conversation_list[i].dest_ip, dest_ip) == 0 &&
+            conversation_list[i].dest_port == dest_port) {
+            return 1;  // Conversation already exists
+        }
+    }
+    return 0;  // Conversation not found
+}
+
+void add_conversation(const char* source_ip, uint16_t source_port, const char* dest_ip, uint16_t dest_port) {
+    strcpy(conversation_list[conversation_count].source_ip, source_ip);
+    conversation_list[conversation_count].source_port = source_port;
+    strcpy(conversation_list[conversation_count].dest_ip, dest_ip);
+    conversation_list[conversation_count].dest_port = dest_port;
+    conversation_count++;
+}
+
 void print_conversation(char* source_ip, uint16_t source_port, char* dest_ip, uint16_t dest_port) {
-    printf("Conversation: %s:%d <-> %s:%d\n",
-       source_ip, ntohs(source_port),
-        dest_ip, ntohs(dest_port));
+    if (!is_duplicate_conversation(source_ip, source_port, dest_ip, dest_port)) {
+        printf("Conversation: %s:%d <-> %s:%d\n", source_ip, source_port, dest_ip, dest_port);
+        printf("==========================================================\n");
+        add_conversation(source_ip, source_port, dest_ip, dest_port);
+    }
 }
 void packet_handler(u_char *, const struct pcap_pkthdr *pkthdr, const unsigned char *packet) {
     struct ether_header *ether_header = (struct ether_header *)packet;
@@ -99,13 +132,10 @@ void packet_handler(u_char *, const struct pcap_pkthdr *pkthdr, const unsigned c
         inet_ntop(AF_INET, &(ip_header->ip_dst), dest_ip_str, INET_ADDRSTRLEN);
 
         print_mac(ether_header->ether_shost, ether_header->ether_dhost);
-        print_ip(source_ip_str, dest_ip_str, pkthdr->len);
-
-        print_transport(ntohs(tcp_header->th_sport), ntohs(tcp_header->th_dport), ntohs(udp_header->uh_sport),  ntohs(udp_header->uh_dport));
-
         print_conversation(source_ip_str, ntohs(tcp_header->th_sport), dest_ip_str, ntohs(tcp_header->th_dport));
-        update_stats(source_ip, pkthdr->len, 0);
-        update_stats(dest_ip, 0, pkthdr->len);
+        update_stats(source_ip, ntohs(tcp_header->th_sport), pkthdr->len, 0);
+        update_stats(dest_ip, ntohs(tcp_header->th_dport), 0, pkthdr->len);
+
     }
 }
 
@@ -129,7 +159,7 @@ int main(int argc, char *argv[]) {
         char source_ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &(ip_packet[i].ip), source_ip, INET_ADDRSTRLEN);
 
-        printf("IP: %s\n", source_ip);
+        printf("IP: %s:%d \n", source_ip, ip_packet[i].port);
         printf("송신 패킷 개수: %d\n", ip_packet[i].send_packets);
         printf("수신 패킷 개수: %d\n", ip_packet[i].receive_packets);
         printf("송신 패킷 바이트: %d\n", ip_packet[i].send_bytes);
