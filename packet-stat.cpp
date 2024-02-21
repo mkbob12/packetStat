@@ -43,7 +43,7 @@ int mac_count = 0;
 
 void update_stats(uint32_t ip, uint16_t port, int send_bytes, int receive_bytes) {
     for (int i = 0; i < ip_count; i++) {
-        if (ip_packet[i].ip == ip && ip_packet[i].port == port) {
+        if (ip_packet[i].ip == ip) {
             ip_packet[i].send_packets += (send_bytes > 0) ? 1 : 0;
             ip_packet[i].receive_packets += (receive_bytes > 0) ? 1 : 0;
             ip_packet[i].send_bytes += send_bytes;
@@ -112,13 +112,16 @@ void add_conversation(const char* source_ip, uint16_t source_port, const char* d
     conversation_count++;
 }
 
-void print_conversation(char* source_ip, uint16_t source_port, char* dest_ip, uint16_t dest_port) {
+void print_conversation(char* source_ip, uint16_t source_port, char* dest_ip, uint16_t dest_port, char* type) {
     if (!is_duplicate_conversation(source_ip, source_port, dest_ip, dest_port)) {
-        printf("Conversation: %s:%d <-> %s:%d\n", source_ip, source_port, dest_ip, dest_port);
+        printf("type : %s Port %d \n", type, source_port);
+        printf("Conversation: %s:%d <-> %s:%d\n", source_ip, source_port, dest_ip, dest_port, type, source_port);
         printf("=======================================\n");
         add_conversation(source_ip, source_port, dest_ip, dest_port);
     }
 }
+
+
 void packet_handler(u_char *, const struct pcap_pkthdr *pkthdr, const unsigned char *packet) {
     struct ether_header *ether_header = (struct ether_header *)packet;
     struct ip *ip_header = (struct ip *)(packet + sizeof(struct ether_header));
@@ -136,11 +139,16 @@ void packet_handler(u_char *, const struct pcap_pkthdr *pkthdr, const unsigned c
         inet_ntop(AF_INET, &(ip_header->ip_dst), dest_ip_str, INET_ADDRSTRLEN);
 
         print_mac(ether_header->ether_shost, ether_header->ether_dhost);
-        print_conversation(source_ip_str, ntohs(tcp_header->th_sport), dest_ip_str, ntohs(tcp_header->th_dport));
-        update_stats(source_ip, ntohs(tcp_header->th_sport), pkthdr->len, 0);
-        update_stats(dest_ip, ntohs(tcp_header->th_dport), 0, pkthdr->len);
 
-
+        if (ip_header->ip_p == IPPROTO_TCP) {
+            print_conversation(source_ip_str, ntohs(tcp_header->th_sport), dest_ip_str, ntohs(tcp_header->th_dport), "TCP");
+            update_stats(source_ip, ntohs(tcp_header->th_sport), pkthdr->len, 0);
+            update_stats(dest_ip, ntohs(tcp_header->th_dport), 0, pkthdr->len);
+        } else if (ip_header->ip_p == IPPROTO_UDP) {
+            print_conversation(source_ip_str, ntohs(udp_header->uh_sport), dest_ip_str, ntohs(udp_header->uh_dport), "UDP");
+            update_stats(source_ip, ntohs(udp_header->uh_sport), pkthdr->len, 0);
+            update_stats(dest_ip, ntohs(udp_header->uh_dport), 0, pkthdr->len);
+        }
     }
 }
 
